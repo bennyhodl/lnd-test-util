@@ -222,7 +222,8 @@ impl Lnd {
         args.push(&zmq_raw_tx);
 
 
-        let listen_url = format!("0.0.0.0:{}", get_available_port()?);
+        let listen_port = get_available_port()?;
+        let listen_url = format!("0.0.0.0:{}", listen_port);
         let listen_arg = format!("--listen={}", listen_url);
         args.push(&listen_arg);
 
@@ -237,6 +238,8 @@ impl Lnd {
         args.push(&rest_arg);
 
         args.push("--noseedbackup");
+
+        args.push("--protocol.wumbo-channels");
 
         let view_stderr = if conf.view_stderr {
             Stdio::inherit()
@@ -292,7 +295,7 @@ impl Lnd {
             work_dir,
             grpc_url: format!("https://localhost:{}", grpc_port),
             rest_url: format!("https://localhost:{}", rest_port),
-            listen_url: Some(listen_url),
+            listen_url: Some(format!("localhost:{}", listen_port)),
             admin_macaroon,
             tls_cert,
         })
