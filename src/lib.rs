@@ -8,7 +8,7 @@
 
 mod error;
 // mod ext;
-// mod versions;
+mod versions;
 
 use bitcoind::anyhow;
 use bitcoind::anyhow::Context;
@@ -46,18 +46,17 @@ pub use which;
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[non_exhaustive]
 pub struct Conf<'a> {
-    /// Electrsd command line arguments
-    /// note that `db-dir`, `cookie`, `cookie-file`, `daemon-rpc-addr`, `jsonrpc-import`, `electrum-rpc-addr`, `monitoring-addr`, `http-addr`  cannot be used cause they are automatically initialized.
+    /// Lnd command line arguments
     pub args: Vec<&'a str>,
 
-    /// if `true` electrsd log output will not be suppressed
+    /// if `true` lnd log output will not be suppressed
     pub view_stderr: bool,
 
     /// Must match bitcoind network
     pub network: &'a str,
 
-    /// Optionally specify a temporary or persistent working directory for the electrs.
-    /// electrs index files will be stored in this path.
+    /// Optionally specify a temporary or persistent working directory for the lnd.
+    /// lnd index files will be stored in this path.
     /// The following two parameters can be configured to simulate desired working directory configuration.
     ///
     /// tmpdir is Some() && staticdir is Some() : Error. Cannot be enabled at same time.
@@ -87,8 +86,8 @@ pub struct Conf<'a> {
 
 impl Default for Conf<'_> {
     fn default() -> Self {
-        // let args = if cfg!(feature = "electrs_0_9_1")
-        //     || cfg!(feature = "electrs_0_8_10")
+        // let args = if cfg!(feature = "lnd_0_9_1")
+        //     || cfg!(feature = "lnd_0_8_10")
         //     || cfg!(feature = "esplora_a33e97e1")
         //     || cfg!(feature = "legacy")
         // {
@@ -117,9 +116,9 @@ impl Default for Conf<'_> {
 pub struct Lnd {
     /// Process child handle, used to terminate the process when this struct is dropped
     process: Child,
-    /// Electrum client connected to the electrs process
+    /// LND client connected to the lnd process
     pub client: Client,
-    /// Work directory, where the electrs stores indexes and other stuffs.
+    /// Work directory, where the lnd stores indexes and other stuffs.
     work_dir: DataDir,
     /// Url to connect to the gRPC server
     pub grpc_url: String,
@@ -133,7 +132,7 @@ pub struct Lnd {
     pub tls_cert: String
 }
 
-/// The DataDir struct defining the kind of data directory electrs will use.
+/// The DataDir struct defining the kind of data directory lnd will use.
 /// /// Data directory can be either persistent, or temporary.
 pub enum DataDir {
     /// Persistent Data Directory
@@ -301,7 +300,7 @@ impl Lnd {
         })
     }
 
-    /// triggers electrs sync by sending the `SIGUSR1` signal, useful to call after a block for example
+    /// triggers lnd sync by sending the `SIGUSR1` signal, useful to call after a block for example
     pub fn trigger(&self) -> anyhow::Result<()> {
         Ok(nix::sys::signal::kill(
             nix::unistd::Pid::from_raw(self.process.id() as i32),
@@ -318,7 +317,7 @@ impl Lnd {
     pub fn kill(&mut self) -> anyhow::Result<()> {
         match self.work_dir {
             DataDir::Persistent(_) => {
-                // Send SIGINT signal to electrsd
+                // Send SIGINT signal to lnd
                 nix::sys::signal::kill(
                     nix::unistd::Pid::from_raw(self.process.id() as i32),
                     nix::sys::signal::SIGINT,
@@ -354,27 +353,26 @@ pub fn setup_bitcoind() -> (bitcoind::BitcoinD, u16, u16) {
     (bitcoind, zmq_block_port, zmq_tx_port)
 }
 
-/// Provide the electrs executable path if a version feature has been specified
+/// Provide the lnd executable path if a version feature has been specified
 pub fn downloaded_exe_path() -> Option<String> {
-    None
-    // if versions::HAS_FEATURE {
-    //     Some(format!(
-    //         "{}/electrs/{}/electrs",
-    //         env!("OUT_DIR"),
-    //         versions::electrs_name(),
-    //     ))
-    // } else {
-    //     None
-    // }
+    if versions::HAS_FEATURE {
+        Some(format!(
+            "{}/lnd/{}/lnd",
+            env!("OUT_DIR"),
+            versions::lnd_name(),
+        ))
+    } else {
+        None
+    }
 }
 
 /// Returns the daemon `lnd` executable with the following precedence:
 ///
 /// 1) If it's specified in the `LND_EXEC` or in `LND_EXE` env var
 /// (errors if both env vars are present)
-/// 2) If there is no env var but an auto-download feature such as `electrs_0_9_11` is enabled, returns the
+/// 2) If there is no env var but an auto-download feature such as `lnd_0_9_11` is enabled, returns the
 /// path of the downloaded executabled
-/// 3) If neither of the precedent are available, the `electrs` executable is searched in the `PATH`
+/// 3) If neither of the precedent are available, the `lnd` executable is searched in the `PATH`
 pub fn exe_path() -> anyhow::Result<String> {
     if let (Ok(_), Ok(_)) = (std::env::var("LND_EXEC"), std::env::var("LND_EXE")) {
         return Err(error::Error::BothEnvVars.into());
@@ -389,7 +387,7 @@ pub fn exe_path() -> anyhow::Result<String> {
         return Ok(path);
     }
     which::which("lnd")
-        .map_err(|_| Error::NoElectrsExecutableFound.into())
+        .map_err(|_| Error::NoLndExecutableFound.into())
         .map(|p| p.display().to_string())
 }
 

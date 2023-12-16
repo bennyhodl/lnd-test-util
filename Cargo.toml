@@ -3,7 +3,22 @@ name = "lnd"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default-features = []
+download = ["bitcoin_hashes", "zip", "minreq"]
+
+lnd_0_17_3 = ["download"]
+lnd_0_16_4 = ["download"]
+
+[build-dependencies]
+bitcoin_hashes = { version = "0.12", optional = true }
+zip = { version = "0.6", default-features = false, optional = true, features = [
+  "bzip2",
+  "deflate",
+] }
+minreq = { version = "2.9.0", default-features = false, optional = true, features = [
+  "https",
+] }
 
 [dependencies]
 async-recursion = "1.0.5"
