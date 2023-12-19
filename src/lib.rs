@@ -22,6 +22,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::str::FromStr;
 use std::time::Duration;
 
 // re-export bitcoind
@@ -339,10 +340,15 @@ impl Drop for Lnd {
     }
 }
 
-pub fn setup_bitcoind() -> (bitcoind::BitcoinD, u16, u16) {
+/// Start a bitcoind instance that returns the ZMW ports.
+/// Pass an optional path for a static directory.
+pub fn setup_bitcoind(dir: Option<&str>) -> (bitcoind::BitcoinD, u16, u16) {
     let bitcoind_exe_path = bitcoind::exe_path().unwrap();
     debug!("bitcoind: {}", &bitcoind_exe_path);
     let mut conf = bitcoind::Conf::default();
+    if let Some(dir) = dir {
+        conf.staticdir = Some(PathBuf::from_str(dir).unwrap())
+    }
     let zmq_block_port = get_available_port().unwrap();
     let zmq_tx_port = get_available_port().unwrap();
     let zmqpubrawblock = format!("-zmqpubrawblock=tcp://0.0.0.0:{}", zmq_block_port);
@@ -415,7 +421,7 @@ mod test {
     #[tokio::test]
     async fn two_lnd_nodes() {
         let (_, lnd_exe) = init();
-        let (bitcoind, block_port, tx_port) = setup_bitcoind();
+        let (bitcoind, block_port, tx_port) = setup_bitcoind(None);
 
         let lnd = Lnd::new(lnd_exe.clone(), &bitcoind, block_port, tx_port).await;
         let lnd_two = Lnd::new(lnd_exe, &bitcoind, block_port, tx_port).await;
@@ -427,7 +433,7 @@ mod test {
     #[tokio::test]
     async fn test_with_gen_blocks() {
         let (_, lnd_exe) = init();
-        let (bitcoind, block_port, tx_port) = setup_bitcoind();
+        let (bitcoind, block_port, tx_port) = setup_bitcoind(None);
 
         let address = bitcoind
             .client
