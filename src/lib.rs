@@ -36,7 +36,7 @@ pub use which;
 /// Default values:
 /// ```
 /// let mut conf = lnd::Conf::default();
-/// conf.view_stderr = false;
+/// conf.view_stdout = false;
 /// conf.network = "regtest";
 /// conf.tmpdir = None;
 /// conf.staticdir = None;
@@ -51,6 +51,9 @@ pub struct Conf<'a> {
     pub args: Vec<&'a str>,
 
     /// if `true` lnd log output will not be suppressed
+    pub view_stdout: bool,
+
+    /// if `true` lnd log error output will not be suppressed
     pub view_stderr: bool,
 
     /// Must match bitcoind network
@@ -102,6 +105,7 @@ impl Default for Conf<'_> {
         Conf {
             args,
             view_stderr: false,
+            view_stdout: false,
             network: "regtest",
             listen_port: 9735,
             tmpdir: None,
@@ -241,7 +245,13 @@ impl Lnd {
 
         args.push("--protocol.wumbo-channels");
 
-        let view_stderr = if conf.view_stderr {
+        let view_stderr = if conf.view_stdout {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        };
+
+        let view_stdout = if conf.view_stdout {
             Stdio::inherit()
         } else {
             Stdio::null()
@@ -250,7 +260,7 @@ impl Lnd {
         let mut process = Command::new(&exe)
             .args(args)
             .stderr(view_stderr)
-            .stdout(Stdio::null())
+            .stdout(view_stdout)
             .spawn()
             .with_context(|| format!("Error while executing {:?}", exe.as_ref()))?;
 
@@ -473,7 +483,7 @@ mod test {
 
         let bitcoind = bitcoind::BitcoinD::with_conf(&bitcoind_exe, &conf).unwrap();
         let lnd_conf = crate::Conf {
-            view_stderr: log_enabled!(Level::Debug),
+            view_stdout: log_enabled!(Level::Debug),
             ..Default::default()
         };
         let lnd = Lnd::with_conf(&lnd_exe, &bitcoind, &lnd_conf, zmq_block_port, zmq_tx_port).await.unwrap();
