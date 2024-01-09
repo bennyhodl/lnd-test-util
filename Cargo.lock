@@ -268,9 +268,9 @@ dependencies = [
 
 [[package]]
 name = "bitcoind"
-version = "0.34.0"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c1978ad180fbf0782d0b6a871de78609dca8d9024215b37592d0873bc259eb8"
+checksum = "f50548a349632abb9a2007d431a302bf0401a786c91f809ff31765fba87e2397"
 dependencies = [
  "anyhow",
  "bitcoincore-rpc 0.18.0",
@@ -914,11 +914,11 @@ checksum = "c4cd1a83af159aa67994778be9070f0ae1bd732942279cabb14f86f986a21456"
 
 [[package]]
 name = "lnd"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "async-recursion",
  "bitcoin_hashes 0.12.0",
- "bitcoind 0.34.0",
+ "bitcoind 0.34.1",
  "electrsd",
  "electrum-client 0.18.0",
  "env_logger",

@@ -5,13 +5,17 @@ Utility to run a regtest [LND](https://github.com/lightningnetwork/lnd) process 
 useful in integration testing environment.
 
 ```rust
-// Returns the ZMQ ports because it is needed for the LND nodes
-let (bitcoind, pub_raw_block_port, pub_raw_tx_port) = lnd::setup_bitcoind();
+// Create a bitcoind instance
+let mut bitcoin_conf = bitcoind::Conf::default();
+bitcoin_conf.enable_zmq = true;
+
+let bitcoind = bitcoind::BitcoinD::with_conf("/usr/local/bin/bitcoind", &bitcoin_conf).unwrap();
 
 // Pass the binary path, bitcoind, and ZMQ ports
-let mut lnd = lnd::Lnd::new("/bin/lnd", &bitcoind, pub_raw_block_port, pub_raw_tx_port);
+let mut lnd = lnd::Lnd::new("/bin/lnd", &bitcoind);
 
 let node = lnd.client.lightning().get_info(GetInfoRequest {}).await; 
+
 assert!(node.is_ok());
 ```
 
@@ -20,10 +24,10 @@ assert!(node.is_ok());
 In your project Cargo.toml, activate the following features
 
 ```yml
-lnd = { git = "https://github.com/bennyhodl/lnd-test-util" }
+lnd = { version = "*", features = ["download"] }
 ```
 
-Then use it:
+To use it:
 
 ```rust
 let bitcoind_exe = bitcoind::downloaded_exe_path().expect("bitcoind version feature must be enabled");

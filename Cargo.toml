@@ -1,13 +1,13 @@
 [package]
 name = "lnd"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Utility to run a regtest lnd process connected to a given bitcoind instance, useful in integration testing environment."
 homepage = "https://github.com/bennyhodl/lnd-test-util"
 license = "MIT"
 
 [features]
-default-features = []
+default = []
 download = ["bitcoin_hashes", "zip", "minreq"]
 
 lnd_0_17_3 = ["download"]
@@ -25,7 +25,7 @@ minreq = { version = "2.9.0", default-features = false, optional = true, feature
 
 [dependencies]
 async-recursion = "1.0.5"
-bitcoind = "0.34.0"
+bitcoind = "0.34.1"
 electrsd = "0.26.0"
 electrum-client = "0.18.0"
 env_logger = "0.10.1"

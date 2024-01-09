@@ -17,12 +17,11 @@ use bitcoind::bitcoincore_rpc::RpcApi;
 use bitcoind::tempfile::TempDir;
 use bitcoind::{get_available_port, BitcoinD};
 use tonic_lnd::Client;
-use log::{debug, error, warn};
+use log::{error, warn};
 use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::str::FromStr;
 use std::time::Duration;
 
 // re-export bitcoind
@@ -158,18 +157,16 @@ impl DataDir {
 
 impl Lnd {
     /// Create a new lnd process connected with the given bitcoind and default args.
-    pub async fn new<S: AsRef<OsStr>>(exe: S, bitcoind: &BitcoinD, raw_block_port: u16, raw_tx_port: u16) -> anyhow::Result<Lnd> {
-        Lnd::with_conf(exe, bitcoind, &Conf::default(), raw_block_port, raw_tx_port).await
+    pub async fn new<S: AsRef<OsStr>>(exe: S, bitcoind: &BitcoinD) -> anyhow::Result<Lnd> {
+        Lnd::with_conf(exe, &Conf::default(), bitcoind).await
     }
 
     /// Create a new lnd process using given [Conf] connected with the given bitcoind
     #[async_recursion::async_recursion(?Send)]
     pub async fn with_conf<S: AsRef<OsStr>>(
         exe: S,
-        bitcoind: &BitcoinD,
         conf: &Conf<'_>,
-        raw_block_port: u16,
-        raw_tx_port: u16
+        bitcoind: &BitcoinD,
     ) -> anyhow::Result<Lnd> {
         let response = bitcoind.client.call::<Value>("getblockchaininfo", &[])?;
         if response
@@ -220,9 +217,12 @@ impl Lnd {
         let host = format!("--bitcoind.rpchost={}", rpc_socket);
         args.push(&host);
 
-        let zmq_raw_block = format!("--bitcoind.zmqpubrawblock=tcp://127.0.0.1:{}", raw_block_port);
+        let raw_block_port = bitcoind.params.zmq_pub_raw_block_socket.unwrap();
+        let raw_tx_port = bitcoind.params.zmq_pub_raw_tx_socket.unwrap();
+
+        let zmq_raw_block = format!("--bitcoind.zmqpubrawblock=tcp://{}", raw_block_port);
         args.push(&zmq_raw_block);
-        let zmq_raw_tx = format!("--bitcoind.zmqpubrawtx=tcp://127.0.0.1:{}", raw_tx_port);
+        let zmq_raw_tx = format!("--bitcoind.zmqpubrawtx=tcp://{}", raw_tx_port);
         args.push(&zmq_raw_tx);
 
 
@@ -273,7 +273,7 @@ impl Lnd {
                     warn!("early exit with: {:?}. Trying to launch again ({} attempts remaining), maybe some other process used our available port", status, conf.attempts);
                     let mut conf = conf.clone();
                     conf.attempts -= 1;
-                    return Self::with_conf(exe, bitcoind, &conf, raw_block_port, raw_tx_port).await
+                    return Self::with_conf(exe, &conf, bitcoind).await
                         .with_context(|| format!("Remaining attempts {}", conf.attempts));
                 } else {
                     error!("early exit with: {:?}", status);
@@ -350,25 +350,6 @@ impl Drop for Lnd {
     }
 }
 
-/// Start a bitcoind instance that returns the ZMW ports.
-/// Pass an optional path for a static directory.
-pub fn setup_bitcoind(dir: Option<&str>) -> (bitcoind::BitcoinD, u16, u16) {
-    let bitcoind_exe_path = bitcoind::exe_path().unwrap();
-    debug!("bitcoind: {}", &bitcoind_exe_path);
-    let mut conf = bitcoind::Conf::default();
-    if let Some(dir) = dir {
-        conf.staticdir = Some(PathBuf::from_str(dir).unwrap())
-    }
-    let zmq_block_port = get_available_port().unwrap();
-    let zmq_tx_port = get_available_port().unwrap();
-    let zmqpubrawblock = format!("-zmqpubrawblock=tcp://0.0.0.0:{}", zmq_block_port);
-    let zmqpubrawtx = format!("-zmqpubrawtx=tcp://0.0.0.0:{}", zmq_tx_port);
-    conf.args.push(&zmqpubrawblock);
-    conf.args.push(&zmqpubrawtx);
-    let bitcoind = bitcoind::BitcoinD::with_conf(&bitcoind_exe_path, &conf).unwrap();
-    (bitcoind, zmq_block_port, zmq_tx_port)
-}
-
 /// Provide the lnd executable path if a version feature has been specified
 pub fn downloaded_exe_path() -> Option<String> {
     if versions::HAS_FEATURE {
@@ -411,9 +392,8 @@ pub fn exe_path() -> anyhow::Result<String> {
 mod test {
     use crate::exe_path;
     use crate::Lnd;
-    use crate::setup_bitcoind;
+    use bitcoind::BitcoinD;
     use bitcoind::bitcoincore_rpc::RpcApi;
-    use bitcoind::get_available_port;
     use log::{debug, log_enabled, Level};
     use tonic_lnd::lnrpc::GetInfoRequest;
     use std::env;
@@ -430,36 +410,29 @@ mod test {
 
     #[tokio::test]
     async fn two_lnd_nodes() {
-        let (_, lnd_exe) = init();
-        let (bitcoind, block_port, tx_port) = setup_bitcoind(None);
+        let (lnd_exe, _, bitcoind) = setup_nodes().await;
 
-        let lnd = Lnd::new(lnd_exe.clone(), &bitcoind, block_port, tx_port).await;
-        let lnd_two = Lnd::new(lnd_exe, &bitcoind, block_port, tx_port).await;
+        let lnd = Lnd::new(&lnd_exe, &bitcoind).await;
 
         assert!(lnd.is_ok());
-        assert!(lnd_two.is_ok());
     }
 
     #[tokio::test]
     async fn test_with_gen_blocks() {
-        let (_, lnd_exe) = init();
-        let (bitcoind, block_port, tx_port) = setup_bitcoind(None);
+        let (_, _, bitcoind) = setup_nodes().await;
 
         let address = bitcoind
             .client
             .get_new_address(None, None)
             .unwrap()
             .assume_checked();
-        bitcoind.client.generate_to_address(100, &address).unwrap();
 
-        let lnd = Lnd::new(&lnd_exe, &bitcoind, block_port, tx_port).await;
-
-        assert!(lnd.is_ok())
+        bitcoind.client.generate_to_address(100, &address).expect("Blocks not generated to address.");
     }
 
     #[tokio::test]
     async fn test_kill() {
-        let (_, bitcoind, mut lnd, _, _) = setup_nodes().await;
+        let (_, mut lnd, bitcoind) = setup_nodes().await;
         let _ = bitcoind.client.ping().unwrap(); // without using bitcoind, it is dropped and all the rest fails.
         let info = lnd.client.lightning().get_info(GetInfoRequest {}).await;
         assert!(info.is_ok());
@@ -468,31 +441,22 @@ mod test {
         assert!(info.is_err());
     }
 
-    pub(crate) async fn setup_nodes() -> (String, bitcoind::BitcoinD, Lnd, u16, u16) {
+    pub(crate) async fn setup_nodes() -> (String, Lnd, BitcoinD) {
         let (bitcoind_exe, lnd_exe) = init();
         debug!("bitcoind: {}", &bitcoind_exe);
         debug!("lnd: {}", &lnd_exe);
-        let mut conf = bitcoind::Conf::default();
-        let zmq_block_port = get_available_port().unwrap();
-        let zmq_tx_port = get_available_port().unwrap();
-        let zmqpubrawblock = format!("-zmqpubrawblock=tcp://0.0.0.0:{}", zmq_block_port);
-        let zmqpubrawtx = format!("-zmqpubrawtx=tcp://0.0.0.0:{}", zmq_tx_port);
-        conf.args.push(&zmqpubrawblock);
-        conf.args.push(&zmqpubrawtx);
-        conf.view_stdout = log_enabled!(Level::Debug);
 
-        let bitcoind = bitcoind::BitcoinD::with_conf(&bitcoind_exe, &conf).unwrap();
-        let lnd_conf = crate::Conf {
-            view_stdout: log_enabled!(Level::Debug),
-            ..Default::default()
-        };
-        let lnd = Lnd::with_conf(&lnd_exe, &bitcoind, &lnd_conf, zmq_block_port, zmq_tx_port).await.unwrap();
+        let mut bitcoin_conf = bitcoind::Conf::default();
+        bitcoin_conf.enable_zmq = true;
+        let bitcoind = BitcoinD::with_conf(bitcoind_exe, &bitcoin_conf).unwrap();
 
-        (lnd_exe, bitcoind, lnd, zmq_block_port, zmq_tx_port)
+        let lnd_conf = crate::Conf::default();
+        let lnd = Lnd::with_conf(&lnd_exe, &lnd_conf, &bitcoind).await.unwrap();
+
+        (lnd_exe, lnd, bitcoind)
     }
 
     fn init() -> (String, String) {
-        let _ = env_logger::try_init();
         let bitcoind_exe_path = bitcoind::exe_path().unwrap();
         let lnd_exe_path = exe_path().unwrap();
         (bitcoind_exe_path, lnd_exe_path)
