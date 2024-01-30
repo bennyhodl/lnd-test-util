@@ -26,6 +26,8 @@ use std::time::Duration;
 
 // re-export bitcoind
 pub use bitcoind;
+// re-export tonic_lnd
+pub use tonic_lnd;
 
 pub use error::Error;
 pub use which;
@@ -394,7 +396,7 @@ mod test {
     use crate::Lnd;
     use bitcoind::BitcoinD;
     use bitcoind::bitcoincore_rpc::RpcApi;
-    use log::{debug, log_enabled, Level};
+    use log::debug;
     use tonic_lnd::lnrpc::GetInfoRequest;
     use std::env;
 
