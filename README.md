@@ -12,7 +12,7 @@ bitcoin_conf.enable_zmq = true;
 let bitcoind = bitcoind::BitcoinD::with_conf("/usr/local/bin/bitcoind", &bitcoin_conf).unwrap();
 
 // Pass the binary path, bitcoind, and ZMQ ports
-let mut lnd = lnd::Lnd::new("/bin/lnd", &bitcoind);
+let mut lnd = lnd::Lnd::new("<path to lnd>", &bitcoind);
 
 let node = lnd.client.lightning().get_info(GetInfoRequest {}).await; 
 
@@ -46,7 +46,7 @@ When you don't use the auto-download feature you have the following options:
 
 ```rust
 if let Ok(exe_path) = lnd::exe_path() {
-  let lnd = lnd::Lnd::new(exe_path, &bitcoind, pub_raw_block_port, pub_raw_tx_port).unwrap();
+  let lnd = lnd::Lnd::new(exe_path, &bitcoind).unwrap();
 }
 ```
 ## Features

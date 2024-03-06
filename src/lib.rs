@@ -458,6 +458,18 @@ mod test {
         (lnd_exe, lnd, bitcoind)
     }
 
+    #[tokio::test]
+    async fn list_unspent() {
+        let (_, mut lnd, _) = setup_nodes().await;
+
+        let request = tonic_lnd::walletrpc::ListUnspentRequest::default();
+
+        let unspent = lnd.client.wallet().list_unspent(request).await;
+        println!("{:?}", unspent);
+        
+        assert!(unspent.is_ok())
+    }
+
     fn init() -> (String, String) {
         let bitcoind_exe_path = bitcoind::exe_path().unwrap();
         let lnd_exe_path = exe_path().unwrap();
