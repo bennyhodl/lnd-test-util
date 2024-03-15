@@ -15,8 +15,7 @@ mod download {
     use std::path::Path;
 
     include!("src/versions.rs");
-    const GITHUB_URL: &str =
-        "https://github.com/lightningnetwork/lnd/archive/refs/tags/";
+    const GITHUB_URL: &str = "https://github.com/lightningnetwork/lnd/archive/refs/tags/";
 
     fn get_expected_sha256(filename: &str) -> Result<sha256::Hash, ()> {
         let file = File::open("sha256").map_err(|_| ())?;

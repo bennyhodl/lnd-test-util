@@ -16,13 +16,13 @@ use bitcoind::bitcoincore_rpc::jsonrpc::serde_json::Value;
 use bitcoind::bitcoincore_rpc::RpcApi;
 use bitcoind::tempfile::TempDir;
 use bitcoind::{get_available_port, BitcoinD};
-use tonic_lnd::Client;
 use log::{error, warn};
 use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+use tonic_lnd::Client;
 
 // re-export bitcoind
 pub use bitcoind;
@@ -47,7 +47,7 @@ pub use which;
 /// ```
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[non_exhaustive]
-pub struct Conf<'a> {
+pub struct LndConf<'a> {
     /// Lnd command line arguments
     pub args: Vec<&'a str>,
 
@@ -86,10 +86,10 @@ pub struct Conf<'a> {
 
     pub minchansize: Option<u64>,
 
-    pub maxchansize: Option<u64>
+    pub maxchansize: Option<u64>,
 }
 
-impl Default for Conf<'_> {
+impl Default for LndConf<'_> {
     fn default() -> Self {
         // let args = if cfg!(feature = "lnd_0_9_1")
         //     || cfg!(feature = "lnd_0_8_10")
@@ -103,7 +103,7 @@ impl Default for Conf<'_> {
         //
         let args = vec![];
 
-        Conf {
+        LndConf {
             args,
             view_stderr: false,
             view_stdout: false,
@@ -113,7 +113,7 @@ impl Default for Conf<'_> {
             staticdir: None,
             attempts: 3,
             minchansize: None,
-            maxchansize: None
+            maxchansize: None,
         }
     }
 }
@@ -135,7 +135,9 @@ pub struct Lnd {
     /// Admin macaroon hex
     pub admin_macaroon: String,
     /// TLS Cert hex
-    pub tls_cert: String
+    pub tls_cert: String,
+    /// network
+    network: String,
 }
 
 /// The DataDir struct defining the kind of data directory lnd will use.
@@ -160,14 +162,14 @@ impl DataDir {
 impl Lnd {
     /// Create a new lnd process connected with the given bitcoind and default args.
     pub async fn new<S: AsRef<OsStr>>(exe: S, bitcoind: &BitcoinD) -> anyhow::Result<Lnd> {
-        Lnd::with_conf(exe, &Conf::default(), bitcoind).await
+        Lnd::with_conf(exe, &LndConf::default(), bitcoind).await
     }
 
     /// Create a new lnd process using given [Conf] connected with the given bitcoind
     #[async_recursion::async_recursion(?Send)]
     pub async fn with_conf<S: AsRef<OsStr>>(
         exe: S,
-        conf: &Conf<'_>,
+        conf: &LndConf<'_>,
         bitcoind: &BitcoinD,
     ) -> anyhow::Result<Lnd> {
         let response = bitcoind.client.call::<Value>("getblockchaininfo", &[])?;
@@ -212,7 +214,10 @@ impl Lnd {
 
         args.push("--bitcoin.node=bitcoind");
 
-        let cookie = format!("--bitcoind.rpccookie={}", bitcoind.params.cookie_file.to_str().unwrap());
+        let cookie = format!(
+            "--bitcoind.rpccookie={}",
+            bitcoind.params.cookie_file.to_str().unwrap()
+        );
         args.push(&cookie);
 
         let rpc_socket = bitcoind.params.rpc_socket.to_string();
@@ -226,7 +231,6 @@ impl Lnd {
         args.push(&zmq_raw_block);
         let zmq_raw_tx = format!("--bitcoind.zmqpubrawtx=tcp://{}", raw_tx_port);
         args.push(&zmq_raw_tx);
-
 
         let listen_port = get_available_port()?;
         let listen_url = format!("0.0.0.0:{}", listen_port);
@@ -267,7 +271,10 @@ impl Lnd {
             .with_context(|| format!("Error while executing {:?}", exe.as_ref()))?;
 
         let cert_file = work_dir.path().join("tls.cert");
-        let macaroon_file = work_dir.path().join(format!("data/chain/bitcoin/{}/admin.macaroon", conf.network));
+        let macaroon_file = work_dir.path().join(format!(
+            "data/chain/bitcoin/{}/admin.macaroon",
+            conf.network
+        ));
 
         let client = loop {
             if let Some(status) = process.try_wait()? {
@@ -275,7 +282,8 @@ impl Lnd {
                     warn!("early exit with: {:?}. Trying to launch again ({} attempts remaining), maybe some other process used our available port", status, conf.attempts);
                     let mut conf = conf.clone();
                     conf.attempts -= 1;
-                    return Self::with_conf(exe, &conf, bitcoind).await
+                    return Self::with_conf(exe, &conf, bitcoind)
+                        .await
                         .with_context(|| format!("Remaining attempts {}", conf.attempts));
                 } else {
                     error!("early exit with: {:?}", status);
@@ -283,7 +291,13 @@ impl Lnd {
                 }
             }
 
-            match tonic_lnd::connect(format!("https://localhost:{}", grpc_port.clone()), &cert_file, &macaroon_file).await {
+            match tonic_lnd::connect(
+                format!("https://localhost:{}", grpc_port.clone()),
+                &cert_file,
+                &macaroon_file,
+            )
+            .await
+            {
                 Ok(client) => break client,
                 Err(e) => {
                     error!("Error creating client: {}", e);
@@ -310,6 +324,7 @@ impl Lnd {
             listen_url: Some(format!("localhost:{}", listen_port)),
             admin_macaroon,
             tls_cert,
+            network: conf.network.to_string(),
         })
     }
 
@@ -324,6 +339,17 @@ impl Lnd {
     /// Return the current workdir path of the running lnd
     pub fn workdir(&self) -> PathBuf {
         self.work_dir.path()
+    }
+
+    /// Returns the path to the admin macaroon.
+    pub fn admin_macaroon_path(&self) -> PathBuf {
+        let mac_path = format!("data/chain/bitcoin/{}/admin.macaroon", self.network);
+        self.workdir().join(mac_path)
+    }
+
+    /// Returns the path to the tls.cert
+    pub fn tls_cert_path(&self) -> PathBuf {
+        self.workdir().join("tls.cert")
     }
 
     /// terminate the lnd process
@@ -394,11 +420,11 @@ pub fn exe_path() -> anyhow::Result<String> {
 mod test {
     use crate::exe_path;
     use crate::Lnd;
-    use bitcoind::BitcoinD;
     use bitcoind::bitcoincore_rpc::RpcApi;
+    use bitcoind::BitcoinD;
     use log::debug;
-    use tonic_lnd::lnrpc::GetInfoRequest;
     use std::env;
+    use tonic_lnd::lnrpc::GetInfoRequest;
 
     #[test]
     fn test_both_env_vars() {
@@ -429,7 +455,10 @@ mod test {
             .unwrap()
             .assume_checked();
 
-        bitcoind.client.generate_to_address(100, &address).expect("Blocks not generated to address.");
+        bitcoind
+            .client
+            .generate_to_address(100, &address)
+            .expect("Blocks not generated to address.");
     }
 
     #[tokio::test]
@@ -452,8 +481,10 @@ mod test {
         bitcoin_conf.enable_zmq = true;
         let bitcoind = BitcoinD::with_conf(bitcoind_exe, &bitcoin_conf).unwrap();
 
-        let lnd_conf = crate::Conf::default();
-        let lnd = Lnd::with_conf(&lnd_exe, &lnd_conf, &bitcoind).await.unwrap();
+        let lnd_conf = super::LndConf::default();
+        let lnd = Lnd::with_conf(&lnd_exe, &lnd_conf, &bitcoind)
+            .await
+            .unwrap();
 
         (lnd_exe, lnd, bitcoind)
     }
@@ -466,7 +497,7 @@ mod test {
 
         let unspent = lnd.client.wallet().list_unspent(request).await;
         println!("{:?}", unspent);
-        
+
         assert!(unspent.is_ok())
     }
 
