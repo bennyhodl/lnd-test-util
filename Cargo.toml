@@ -3,7 +3,7 @@ name = "lnd"
 version = "0.1.4"
 edition = "2021"
 description = "Utility to run a regtest lnd process connected to a given bitcoind instance, useful in integration testing environment."
-homepage = "https://github.com/bennyhodl/lnd-test-util"
+repository = "https://github.com/bennyhodl/lnd-test-util"
 license = "MIT"
 
 [features]
