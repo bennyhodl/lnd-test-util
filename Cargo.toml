@@ -10,7 +10,7 @@ license = "MIT"
 default = []
 download = ["bitcoin_hashes", "zip", "minreq"]
 
-lnd_0_17_3 = ["download"]
+lnd_0_17_5 = ["download"]
 lnd_0_16_4 = ["download"]
 
 [build-dependencies]
