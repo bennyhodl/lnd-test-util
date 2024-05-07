@@ -17,5 +17,7 @@ const VERSION: &str = "NA";
 pub const HAS_FEATURE: bool = cfg!(any(feature = "lnd_0_17_5", feature = "lnd_0_16_4",));
 
 pub fn lnd_name() -> String {
-    VERSION.to_string()
+    // todo: add arm64 and armv7 support
+    // todo support windows
+    format!("lnd-{}-amd64-{}", OS, VERSION)
 }
