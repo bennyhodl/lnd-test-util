@@ -8,7 +8,7 @@
 
 mod error;
 // mod ext;
-mod versions;
+pub mod versions;
 
 use bitcoind::anyhow;
 use bitcoind::anyhow::Context;
@@ -36,14 +36,14 @@ pub use which;
 ///
 /// Default values:
 /// ```
-/// let mut conf = lnd::Conf::default();
+/// let mut conf = lnd::LndConf::default();
 /// conf.view_stdout = false;
 /// conf.network = "regtest";
 /// conf.tmpdir = None;
 /// conf.staticdir = None;
 /// conf.minchansize = None;
 /// conf.maxchansize = None;
-/// assert_eq!(conf, lnd::Conf::default());
+/// assert_eq!(conf, lnd::LndConf::default());
 /// ```
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[non_exhaustive]
@@ -224,14 +224,6 @@ impl Lnd {
         let host = format!("--bitcoind.rpchost={}", rpc_socket);
         args.push(&host);
 
-        let raw_block_port = bitcoind.params.zmq_pub_raw_block_socket.unwrap();
-        let raw_tx_port = bitcoind.params.zmq_pub_raw_tx_socket.unwrap();
-
-        let zmq_raw_block = format!("--bitcoind.zmqpubrawblock=tcp://{}", raw_block_port);
-        args.push(&zmq_raw_block);
-        let zmq_raw_tx = format!("--bitcoind.zmqpubrawtx=tcp://{}", raw_tx_port);
-        args.push(&zmq_raw_tx);
-
         let listen_port = get_available_port()?;
         let listen_url = format!("0.0.0.0:{}", listen_port);
         let listen_arg = format!("--listen={}", listen_url);
@@ -247,9 +239,20 @@ impl Lnd {
         let rest_arg = format!("--restlisten={}", rest_url);
         args.push(&rest_arg);
 
+        args.push("--bitcoind.rpcpolling");
+        args.push("--bitcoind.blockpollinginterval=1s");
+
         args.push("--noseedbackup");
 
+        args.push("--accept-keysend");
+        args.push("--accept-amp");
+
         args.push("--protocol.wumbo-channels");
+        args.push("--protocol.option-scid-alias");
+
+        args.push("--maxpendingchannels=10");
+        args.push("--historicalsyncinterval=1s");
+        args.push("--trickledelay=1000");
 
         let view_stderr = if conf.view_stdout {
             Stdio::inherit()
@@ -319,9 +322,9 @@ impl Lnd {
             process,
             client,
             work_dir,
-            grpc_url: format!("https://localhost:{}", grpc_port),
-            rest_url: format!("https://localhost:{}", rest_port),
-            listen_url: Some(format!("localhost:{}", listen_port)),
+            grpc_url: format!("https://127.0.0.1:{}", grpc_port),
+            rest_url: format!("https://127.0.0.1:{}", rest_port),
+            listen_url: Some(format!("127.0.0.1:{}", listen_port)),
             admin_macaroon,
             tls_cert,
             network: conf.network.to_string(),
@@ -477,8 +480,7 @@ mod test {
         debug!("bitcoind: {}", &bitcoind_exe);
         debug!("lnd: {}", &lnd_exe);
 
-        let mut bitcoin_conf = bitcoind::Conf::default();
-        bitcoin_conf.enable_zmq = true;
+        let bitcoin_conf = bitcoind::Conf::default();
         let bitcoind = BitcoinD::with_conf(bitcoind_exe, &bitcoin_conf).unwrap();
 
         let lnd_conf = super::LndConf::default();
