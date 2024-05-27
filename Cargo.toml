@@ -1,6 +1,6 @@
 [package]
 name = "lnd"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 description = "Utility to run a regtest lnd process connected to a given bitcoind instance, useful in integration testing environment."
 repository = "https://github.com/bennyhodl/lnd-test-util"

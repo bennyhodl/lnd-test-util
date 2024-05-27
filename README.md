@@ -1,22 +1,39 @@
-# Lnd
+# Lnd Integration Test Utility
+[![Crate](https://img.shields.io/crates/v/lnd.svg?logo=rust)](https://crates.io/crates/lnd)
+[![Documentation](https://img.shields.io/static/v1?logo=read-the-docs&label=docs.rs&message=lnd&color=informational)](https://docs.rs/lnd)
+
 > Mostly a copy of [`electrsd`](https://github.com/RCasatta/electrsd) & [`bitcoind`](https://github.com/rust-bitcoin/bitcoind) fit for LND.
 
 Utility to run a regtest [LND](https://github.com/lightningnetwork/lnd) process connected to a given [bitcoind](https://github.com/RCasatta/bitcoind) instance, 
 useful in integration testing environment.
 
 ```rust
+use lnd::bitcoind::Conf;
+use lnd::LndConf;
+use lnd::bitcoind::BitcoinD;
+use lnd::Lnd;
+
 // Create a bitcoind instance
-let mut bitcoin_conf = bitcoind::Conf::default();
-bitcoin_conf.enable_zmq = true;
+let mut bitcoin_conf = Conf::default();
 
-let bitcoind = bitcoind::BitcoinD::with_conf("/usr/local/bin/bitcoind", &bitcoin_conf).unwrap();
+#[cfg(feature = "download")]
+let bitcoind = BitcoinD::with_conf(lnd::bitcoind::exe_path(), &bitcoin_conf).unwrap();
 
-// Pass the binary path, bitcoind, and ZMQ ports
-let mut lnd = lnd::Lnd::new("<path to lnd>", &bitcoind);
+#[cfg(not(feature = "download"))]
+let bitcoind = BitcoinD::with_conf("<local path to exe>", &bitcoin_conf).unwrap();
 
-let node = lnd.client.lightning().get_info(GetInfoRequest {}).await; 
+let lnd_conf = LndConf::default();
 
-assert!(node.is_ok());
+// Pass the path, conf, and bitcoind
+#[cfg(feature = "download")]
+let mut lnd = Lnd::with_conf(lnd::exe_path(), lnd_conf, &bitcoind);
+
+#[cfg(not(feature = "download"))]
+let mut lnd = Lnd::with_conf("<path to lnd>", lnd_conf, &bitcoind);
+
+let node_info = lnd.client.lightning().get_info(GetInfoRequest {}).await; 
+
+assert!(node_info.is_ok());
 ```
 
 ## Automatic binaries download
@@ -30,8 +47,8 @@ lnd = { version = "*", features = ["download"] }
 To use it:
 
 ```rust
-let bitcoind_exe = bitcoind::downloaded_exe_path().expect("bitcoind version feature must be enabled");
-let bitcoind = bitcoind::BitcoinD::new(bitcoind_exe).unwrap();
+let bitcoind_exe = lnd::bitcoind::downloaded_exe_path().expect("bitcoind version feature must be enabled");
+let bitcoind = lnd::bitcoind::BitcoinD::new(bitcoind_exe).unwrap();
 let lnd_exe = lnd::downloaded_exe_path().expect("lnd version feature must be enabled");
 let lnd = lnd::Lnd::new(lnd_exe, bitcoind).unwrap();
 ```
