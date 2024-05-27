@@ -1,4 +1,7 @@
-# Lnd
+# Lnd Integration Test Utility
+[![Crate](https://img.shields.io/crates/v/lnd.svg?logo=rust)](https://crates.io/crates/lnd)
+[![Documentation](https://img.shields.io/static/v1?logo=read-the-docs&label=docs.rs&message=lnd&color=informational)](https://docs.rs/lnd)
+
 > Mostly a copy of [`electrsd`](https://github.com/RCasatta/electrsd) & [`bitcoind`](https://github.com/rust-bitcoin/bitcoind) fit for LND.
 
 Utility to run a regtest [LND](https://github.com/lightningnetwork/lnd) process connected to a given [bitcoind](https://github.com/RCasatta/bitcoind) instance, 
