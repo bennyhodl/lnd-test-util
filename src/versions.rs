@@ -1,5 +1,5 @@
 #[cfg(target_os = "macos")]
-const OS: &str = "macos";
+const OS: &str = "darwin";
 
 #[cfg(target_os = "linux")]
 const OS: &str = "linux";
