@@ -10,8 +10,7 @@ mod error;
 // mod ext;
 pub mod versions;
 
-use bitcoind::anyhow;
-use bitcoind::anyhow::Context;
+use anyhow::Context;
 use bitcoind::bitcoincore_rpc::jsonrpc::serde_json::Value;
 use bitcoind::bitcoincore_rpc::RpcApi;
 use bitcoind::tempfile::TempDir;
@@ -161,8 +160,21 @@ impl DataDir {
 
 impl Lnd {
     /// Create a new lnd process connected with the given bitcoind and default args.
-    pub async fn new<S: AsRef<OsStr>>(exe: S, bitcoind: &BitcoinD) -> anyhow::Result<Lnd> {
-        Lnd::with_conf(exe, &LndConf::default(), bitcoind).await
+    pub async fn new<S: AsRef<OsStr>>(
+        exe: S,
+        bitcoind_cookie: String,
+        bitcoind_rpc_socket: String,
+        #[cfg(feature = "bitcoind")] bitcoind: &BitcoinD,
+    ) -> anyhow::Result<Lnd> {
+        Lnd::with_conf(
+            exe,
+            &LndConf::default(),
+            bitcoind_cookie,
+            bitcoind_rpc_socket,
+            #[cfg(feature = "bitcoind")]
+            bitcoind,
+        )
+        .await
     }
 
     /// Create a new lnd process using given [Conf] connected with the given bitcoind
@@ -170,20 +182,25 @@ impl Lnd {
     pub async fn with_conf<S: AsRef<OsStr>>(
         exe: S,
         conf: &LndConf<'_>,
-        bitcoind: &BitcoinD,
+        bitcoind_cookie: String,
+        bitcoind_rpc_socket: String,
+        #[cfg(feature = "bitcoind")] bitcoind: &BitcoinD,
     ) -> anyhow::Result<Lnd> {
-        let response = bitcoind.client.call::<Value>("getblockchaininfo", &[])?;
-        if response
-            .get("initialblockdownload")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+        #[cfg(feature = "bitcoind")]
         {
-            // bitcoind will remain in IBD if doesn't see a block from a long time, thus adding a block
-            let node_address = bitcoind.client.call::<Value>("getnewaddress", &[])?;
-            bitcoind
-                .client
-                .call::<Value>("generatetoaddress", &[1.into(), node_address])
-                .unwrap();
+            let response = bitcoind.client.call::<Value>("getblockchaininfo", &[])?;
+            if response
+                .get("initialblockdownload")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                // bitcoind will remain in IBD if doesn't see a block from a long time, thus adding a block
+                let node_address = bitcoind.client.call::<Value>("getnewaddress", &[])?;
+                bitcoind
+                    .client
+                    .call::<Value>("generatetoaddress", &[1.into(), node_address])
+                    .unwrap();
+            }
         }
 
         let mut args = conf.args.clone();
@@ -214,14 +231,10 @@ impl Lnd {
 
         args.push("--bitcoin.node=bitcoind");
 
-        let cookie = format!(
-            "--bitcoind.rpccookie={}",
-            bitcoind.params.cookie_file.to_str().unwrap()
-        );
+        let cookie = format!("--bitcoind.rpccookie={}", bitcoind_cookie);
         args.push(&cookie);
 
-        let rpc_socket = bitcoind.params.rpc_socket.to_string();
-        let host = format!("--bitcoind.rpchost={}", rpc_socket);
+        let host = format!("--bitcoind.rpchost={}", bitcoind_rpc_socket);
         args.push(&host);
 
         let listen_port = get_available_port()?;
@@ -285,9 +298,16 @@ impl Lnd {
                     warn!("early exit with: {:?}. Trying to launch again ({} attempts remaining), maybe some other process used our available port", status, conf.attempts);
                     let mut conf = conf.clone();
                     conf.attempts -= 1;
-                    return Self::with_conf(exe, &conf, bitcoind)
-                        .await
-                        .with_context(|| format!("Remaining attempts {}", conf.attempts));
+                    return Self::with_conf(
+                        exe,
+                        &conf,
+                        bitcoind_cookie,
+                        bitcoind_rpc_socket,
+                        #[cfg(feature = "bitcoind")]
+                        bitcoind,
+                    )
+                    .await
+                    .with_context(|| format!("Remaining attempts {}", conf.attempts));
                 } else {
                     error!("early exit with: {:?}", status);
                     return Err(Error::EarlyExit(status).into());
@@ -419,7 +439,7 @@ pub fn exe_path() -> anyhow::Result<String> {
         .map(|p| p.display().to_string())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "bitcoind"))]
 mod test {
     use crate::exe_path;
     use crate::Lnd;
@@ -443,7 +463,10 @@ mod test {
     async fn two_lnd_nodes() {
         let (lnd_exe, _, bitcoind) = setup_nodes().await;
 
-        let lnd = Lnd::new(&lnd_exe, &bitcoind).await;
+        let cookie = bitcoind.params.cookie_file.to_str().unwrap();
+        let rpc_socket = bitcoind.params.rpc_socket.to_string();
+
+        let lnd = Lnd::new(&lnd_exe, cookie.to_string(), rpc_socket, &bitcoind).await;
 
         assert!(lnd.is_ok());
     }
@@ -467,7 +490,7 @@ mod test {
     #[tokio::test]
     async fn test_kill() {
         let (_, mut lnd, bitcoind) = setup_nodes().await;
-        let _ = bitcoind.client.ping().unwrap(); // without using bitcoind, it is dropped and all the rest fails.
+        bitcoind.client.ping().unwrap(); // without using bitcoind, it is dropped and all the rest fails.
         let info = lnd.client.lightning().get_info(GetInfoRequest {}).await;
         assert!(info.is_ok());
         lnd.kill().unwrap();
@@ -484,9 +507,17 @@ mod test {
         let bitcoind = BitcoinD::with_conf(bitcoind_exe, &bitcoin_conf).unwrap();
 
         let lnd_conf = super::LndConf::default();
-        let lnd = Lnd::with_conf(&lnd_exe, &lnd_conf, &bitcoind)
-            .await
-            .unwrap();
+        let cookie = bitcoind.params.cookie_file.to_str().unwrap();
+        let rpc_socket = bitcoind.params.rpc_socket.to_string();
+        let lnd = Lnd::with_conf(
+            &lnd_exe,
+            &lnd_conf,
+            cookie.to_string(),
+            rpc_socket,
+            &bitcoind,
+        )
+        .await
+        .unwrap();
 
         (lnd_exe, lnd, bitcoind)
     }

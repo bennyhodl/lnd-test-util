@@ -7,7 +7,8 @@ repository = "https://github.com/bennyhodl/lnd-test-util"
 license = "MIT"
 
 [features]
-default = []
+default = ["bitcoind"]
+bitcoind = ["dep:bitcoind"]
 download = ["bitcoin_hashes", "tar", "flate2", "minreq"]
 
 lnd_0_17_5 = ["download"]
@@ -22,9 +23,9 @@ minreq = { version = "2.9.0", default-features = false, optional = true, feature
 ] }
 
 [dependencies]
+anyhow = "1"
 async-recursion = "1.0.5"
-bitcoind = "0.33.0"
-electrum-client = "0.18.0"
+bitcoind = { version = "0.34.2", optional = true }
 env_logger = "0.10.1"
 hex = "0.4.3"
 log = "0.4.20"
