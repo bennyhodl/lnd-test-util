@@ -11,6 +11,7 @@ default = ["bitcoind"]
 bitcoind = ["dep:bitcoind"]
 download = ["bitcoin_hashes", "tar", "flate2", "minreq"]
 
+lnd_0_18_5 = ["download"]
 lnd_0_17_5 = ["download"]
 lnd_0_16_4 = ["download"]
 
@@ -25,7 +26,7 @@ minreq = { version = "2.9.0", default-features = false, optional = true, feature
 [dependencies]
 anyhow = "1"
 async-recursion = "1.0.5"
-bitcoind = { version = "0.34.2", optional = true }
+bitcoind = { version = "0.36.1", optional = true }
 env_logger = "0.10.1"
 hex = "0.4.3"
 log = "0.4.20"
