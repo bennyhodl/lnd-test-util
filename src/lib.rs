@@ -11,10 +11,10 @@ mod error;
 pub mod versions;
 
 use anyhow::Context;
-use bitcoind::bitcoincore_rpc::jsonrpc::serde_json::Value;
-use bitcoind::bitcoincore_rpc::RpcApi;
-use bitcoind::tempfile::TempDir;
-use bitcoind::{get_available_port, BitcoinD};
+#[cfg(feature = "bitcoind")]
+use serde_json::Value;
+use corepc_node::tempfile::TempDir;
+use corepc_node::{get_available_port, Node};
 use log::{error, warn};
 use std::env;
 use std::ffi::OsStr;
@@ -24,7 +24,10 @@ use std::time::Duration;
 use tonic_lnd::Client;
 
 // re-export bitcoind
-pub use bitcoind;
+#[cfg(feature = "bitcoind")]
+pub use corepc_node;
+#[cfg(feature = "bitcoind")]
+pub use corepc_client;
 // re-export tonic_lnd
 pub use tonic_lnd;
 
@@ -164,7 +167,7 @@ impl Lnd {
         exe: S,
         bitcoind_cookie: String,
         bitcoind_rpc_socket: String,
-        #[cfg(feature = "bitcoind")] bitcoind: &BitcoinD,
+        #[cfg(feature = "bitcoind")] bitcoind: &Node,
     ) -> anyhow::Result<Lnd> {
         Lnd::with_conf(
             exe,
@@ -184,7 +187,7 @@ impl Lnd {
         conf: &LndConf<'_>,
         bitcoind_cookie: String,
         bitcoind_rpc_socket: String,
-        #[cfg(feature = "bitcoind")] bitcoind: &BitcoinD,
+        #[cfg(feature = "bitcoind")] bitcoind: &Node,
     ) -> anyhow::Result<Lnd> {
         #[cfg(feature = "bitcoind")]
         {
@@ -443,10 +446,9 @@ pub fn exe_path() -> anyhow::Result<String> {
 mod test {
     use crate::exe_path;
     use crate::Lnd;
-    use bitcoind::bitcoincore_rpc::RpcApi;
-    use bitcoind::BitcoinD;
     use log::debug;
     use std::env;
+    use corepc_node::{Conf, Node};
     use tonic_lnd::lnrpc::GetInfoRequest;
 
     #[test]
@@ -477,9 +479,8 @@ mod test {
 
         let address = bitcoind
             .client
-            .get_new_address(None, None)
-            .unwrap()
-            .assume_checked();
+            .new_address()
+            .unwrap();
 
         bitcoind
             .client
@@ -490,7 +491,7 @@ mod test {
     #[tokio::test]
     async fn test_kill() {
         let (_, mut lnd, bitcoind) = setup_nodes().await;
-        bitcoind.client.ping().unwrap(); // without using bitcoind, it is dropped and all the rest fails.
+        bitcoind.client.get_best_block_hash().unwrap(); // without using bitcoind, it is dropped and all the rest fails.
         let info = lnd.client.lightning().get_info(GetInfoRequest {}).await;
         assert!(info.is_ok());
         lnd.kill().unwrap();
@@ -498,13 +499,13 @@ mod test {
         assert!(info.is_err());
     }
 
-    pub(crate) async fn setup_nodes() -> (String, Lnd, BitcoinD) {
+    pub(crate) async fn setup_nodes() -> (String, Lnd, Node) {
         let (bitcoind_exe, lnd_exe) = init();
         debug!("bitcoind: {}", &bitcoind_exe);
         debug!("lnd: {}", &lnd_exe);
 
-        let bitcoin_conf = bitcoind::Conf::default();
-        let bitcoind = BitcoinD::with_conf(bitcoind_exe, &bitcoin_conf).unwrap();
+        let bitcoin_conf = Conf::default();
+        let bitcoind = Node::with_conf(bitcoind_exe, &bitcoin_conf).unwrap();
 
         let lnd_conf = super::LndConf::default();
         let cookie = bitcoind.params.cookie_file.to_str().unwrap();
@@ -535,7 +536,7 @@ mod test {
     }
 
     fn init() -> (String, String) {
-        let bitcoind_exe_path = bitcoind::exe_path().unwrap();
+        let bitcoind_exe_path = corepc_node::exe_path().unwrap();
         let lnd_exe_path = exe_path().unwrap();
         (bitcoind_exe_path, lnd_exe_path)
     }

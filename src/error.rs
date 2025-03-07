@@ -5,10 +5,7 @@ pub enum Error {
     Io(std::io::Error),
 
     /// Wrapper of bitcoind Error
-    Bitcoind(bitcoind::Error),
-
-    /// Wrapper of bitcoincore_rpc Error
-    BitcoinCoreRpc(bitcoind::bitcoincore_rpc::Error),
+    Bitcoind(corepc_node::Error),
 
     /// Wrapper of nix Error
     Nix(nix::Error),
@@ -32,7 +29,6 @@ impl std::error::Error for Error {
         match self {
             Error::Io(e) => Some(e),
             Error::Bitcoind(e) => Some(e),
-            Error::BitcoinCoreRpc(e) => Some(e),
             Error::Nix(e) => Some(e),
             _ => None,
         }
@@ -51,15 +47,9 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<bitcoind::Error> for Error {
-    fn from(e: bitcoind::Error) -> Self {
+impl From<corepc_node::Error> for Error {
+    fn from(e: corepc_node::Error) -> Self {
         Error::Bitcoind(e)
-    }
-}
-
-impl From<bitcoind::bitcoincore_rpc::Error> for Error {
-    fn from(e: bitcoind::bitcoincore_rpc::Error) -> Self {
-        Error::BitcoinCoreRpc(e)
     }
 }
 

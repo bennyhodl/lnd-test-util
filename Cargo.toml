@@ -8,7 +8,7 @@ license = "MIT"
 
 [features]
 default = ["bitcoind"]
-bitcoind = ["dep:bitcoind"]
+bitcoind = ["dep:corepc-node", "dep:corepc-client", "dep:serde", "dep:serde_json"]
 download = ["bitcoin_hashes", "tar", "flate2", "minreq"]
 
 lnd_0_18_5 = ["download"]
@@ -26,7 +26,10 @@ minreq = { version = "2.9.0", default-features = false, optional = true, feature
 [dependencies]
 anyhow = "1"
 async-recursion = "1.0.5"
-bitcoind = { version = "0.36.1", optional = true }
+serde = { version = "1.0.218", optional = true }
+serde_json = { version = "1.0.140", optional = true }
+corepc-node = { version = "0.5.0", optional = true }
+corepc-client = { version = "0.5.0", optional = true }
 env_logger = "0.10.1"
 hex = "0.4.3"
 log = "0.4.20"
